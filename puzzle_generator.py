@@ -4,6 +4,7 @@ TODO
 
 from collections import defaultdict
 from itertools import combinations
+import textwrap
 
 import clingo
 from clingox.reify import reify_program
@@ -34,23 +35,33 @@ class RectangularPuzzle:
             board_width(board_width).
             #show board_width/1.
             #show board_height/1.
-        """
-        self.puzzle_program = """
-            solution(C,V) :- puzzle(C,V).
+
             #show puzzle/2.
             #show guessed_number/2.
+            guessed_number(none,0).
+            #show solution/2.
         """
+        self.puzzle_gen_program = ""
+        self.puzzle_constraints_program = ""
         self.solution_program = """
             1 { solution(C,V) : value(V) } 1 :- cell(C).
-            #show solution/2.
+            solution(C,V) :- puzzle(C,V).
         """
         self.designated_solution_constraints = None
 
         self.naming = {}
+        self.latex_naming = {}
 
     def pretty_name(self, value):
         if value in self.naming:
             return self.naming[value]
+        if not value:
+            return " "
+        return value
+
+    def latex_name(self, value):
+        if value in self.latex_naming:
+            return self.latex_naming[value]
         if not value:
             return " "
         return value
@@ -72,6 +83,45 @@ class RectangularPuzzle:
                 for num_name in self.puzzle_numbers
             ])
         return model_repr
+
+    def latex_repr_generic(self, filling):
+        if self.puzzle:
+            latex_repr = textwrap.dedent(f"""
+                \\begin{{tikzpicture}}[scale=1]
+                  \\begin{{scope}}
+                    \\draw (0,0) grid ({self.board_width},{self.board_height});
+                    \\draw[ultra thick]
+                      (0,0) rectangle ({self.board_width},{self.board_height});
+            """)
+            for row in range(1, self.board_height + 1):
+                for col in range(1, self.board_width + 1):
+                    if filling[(row, col)]:
+                        x_coord = f"{self.board_height+0.5-row}"
+                        y_coord = f"{col-0.5}"
+                        latex_repr += "      \\node[anchor=center] at "
+                        latex_repr += f"({y_coord},{x_coord}) "
+                        name = self.latex_name(filling[(row, col)])
+                        latex_repr += f"{{{name}}};\n"
+            latex_repr = latex_repr[:-1]
+            latex_repr += textwrap.dedent(f"""
+                  \\end{{scope}}
+                \\end{{tikzpicture}}
+            """)
+
+        else:
+            return None
+        # if len(self.puzzle_numbers) > 0:
+        #     model_repr += '\n\n' + '\n'.join([
+        #         f"{num_name} = {self.puzzle_numbers[num_name]}"
+        #         for num_name in self.puzzle_numbers
+        #     ])
+        return latex_repr
+
+    def latex_repr_puzzle(self):
+        return self.latex_repr_generic(self.puzzle)
+
+    def latex_repr_solution(self):
+        return self.latex_repr_generic(self.solution)
 
     def pretty_repr_solution(self):
         if self.solution:
@@ -110,7 +160,8 @@ class RectangularPuzzle:
             elif atom.name == "guessed_number":
                 num_name = str(atom.arguments[0])
                 num_val = atom.arguments[1].number
-                self.puzzle_numbers[num_name] = num_val
+                if num_name != "none":
+                    self.puzzle_numbers[num_name] = num_val
             elif atom.name == "print":
                 print(atom)
 
@@ -138,6 +189,7 @@ class RectangularPuzzle:
                 )
             )):
                 program_to_reify = self.domain_program
+                program_to_reify += self.puzzle_gen_program
                 program_to_reify += self.solution_program
                 program_to_reify += "".join(solution_constraints)
 
@@ -183,11 +235,13 @@ class RectangularPuzzle:
                         print()
 
         program_to_reify = self.domain_program
+        program_to_reify += self.puzzle_gen_program
         program_to_reify += self.solution_program
         program_to_reify += designated_solution_program
 
         program = self.domain_program
-        program += self.puzzle_program
+        program += self.puzzle_gen_program
+        program += self.puzzle_constraints_program
         program += self.solution_program
         program += designated_solution_program
 
@@ -207,14 +261,18 @@ class RectangularPuzzle:
         ])
 
         glue_program = """
-            bot :- puzzle(C,V), output(solution(C,V),B), fail(normal(B)).
             bot :- true(normal(B)) : output(solution(C,V),B), solution(C,V).
             :- not bot.
+
+            bot :- puzzle(C,V), output(puzzle(C,V),B), fail(normal(B)).
+            bot :- not puzzle(C,V), output(puzzle(C,V),B), true(normal(B)).
         """
         if reified_solution_programs:
             glue_program += """
                 :- puzzle(C,V),
-                    alt(I,output(solution(C,V),B)), not alt(I,conjunction(B)).
+                    alt(I,output(puzzle(C,V),B)), not alt(I,conjunction(B)).
+                :- not puzzle(C,V),
+                    alt(I,output(puzzle(C,V),B)), alt(I,conjunction(B)).
                 :- alt(I), alt(I,conjunction(B)) :
                         output(solution(C,V),B), solution(C,V).
             """
@@ -271,6 +329,15 @@ enc_library = {
     adjacent_cells(c(R,C),c(R+1,C)) :-
         cell(c(R,C)), cell(c(R+1,C)).
     adjacent_cells(C1,C2) :- adjacent_cells(C2,C1).
+    """,
+    #
+    'diagonally_adjacent_cells':
+    """
+    diagonally_adjacent_cells(c(R,C),c(R+1,C+1)) :-
+        cell(c(R,C)), cell(c(R+1,C+1)).
+    diagonally_adjacent_cells(c(R,C),c(R+1,C-1)) :-
+        cell(c(R,C)), cell(c(R+1,C-1)).
+    diagonally_adjacent_cells(C1,C2) :- diagonally_adjacent_cells(C2,C1).
     """,
     #
     'knights_move':
