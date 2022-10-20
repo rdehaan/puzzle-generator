@@ -331,6 +331,22 @@ enc_library = {
     adjacent_cells(C1,C2) :- adjacent_cells(C2,C1).
     """,
     #
+    'ring_around_cell':
+    """
+    possible_distance(1..board_width).
+    possible_distance(1..board_height).
+    ring_around_cell(c(R1,C1),c(R2,C2),D) :-
+        cell(c(R1,C1)), cell(c(R2,C2)), possible_distance(D),
+        |R1-R2| <= D, |C1-C2| <= D.
+    """,
+    #
+    'cell_distance':
+    """
+    cell_distance(c(R1,C1),c(R2,C2),D) :-
+        cell(c(R1,C1)), cell(c(R2,C2)),
+        D = |R1-R2| + |C1-C2|.
+    """,
+    #
     'diagonally_adjacent_cells':
     """
     diagonally_adjacent_cells(c(R,C),c(R+1,C+1)) :-
