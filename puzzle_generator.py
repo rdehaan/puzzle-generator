@@ -290,6 +290,8 @@ class RectangularPuzzle:
         control.add("base", [], reified_program)
         control.add("base", [], glue_program)
         control.ground([("base", [])])
+        if verbose:
+            print("Done grounding..")
 
         # Find and yield answer sets
         control.configuration.solve.models = num_models
