@@ -84,7 +84,7 @@ class RectangularPuzzle:
             ])
         return model_repr
 
-    def latex_repr_generic(self, filling):
+    def latex_repr_generic(self, filling, show_numbers=True):
         if self.puzzle:
             latex_repr = textwrap.dedent(f"""
                 \\begin{{tikzpicture}}[scale=1]
@@ -95,33 +95,37 @@ class RectangularPuzzle:
             """)
             for row in range(1, self.board_height + 1):
                 for col in range(1, self.board_width + 1):
+                    x_coord = f"{self.board_height+0.5-row}"
+                    y_coord = f"{col-0.5}"
+                    latex_repr += "      \\node[anchor=center] "
+                    latex_repr += f"({row};{col})"
+                    latex_repr += " at "
+                    latex_repr += f"({y_coord},{x_coord}) "
                     if filling[(row, col)]:
-                        x_coord = f"{self.board_height+0.5-row}"
-                        y_coord = f"{col-0.5}"
-                        latex_repr += "      \\node[anchor=center] at "
-                        latex_repr += f"({y_coord},{x_coord}) "
                         name = self.latex_name(filling[(row, col)])
-                        latex_repr += f"{{{name}}};\n"
+                    else:
+                        name = " "
+                    latex_repr += f"{{{name}}};\n"
             latex_repr = latex_repr[:-1]
             latex_repr += textwrap.dedent(f"""
                   \\end{{scope}}
                 \\end{{tikzpicture}}
             """)
-
-        else:
-            return None
-        # if len(self.puzzle_numbers) > 0:
-        #     model_repr += '\n\n' + '\n'.join([
-        #         f"{num_name} = {self.puzzle_numbers[num_name]}"
-        #         for num_name in self.puzzle_numbers
-        #     ])
-        return latex_repr
+            if show_numbers:
+                if len(self.puzzle_numbers) > 0:
+                    latex_repr += '\\\\\n' + ' \\quad '.join([
+                        f"{self.latex_name(num_name)}: " + \
+                        f"{self.puzzle_numbers[num_name]}"
+                        for num_name in self.puzzle_numbers
+                    ])
+            return latex_repr
+        return None
 
     def latex_repr_puzzle(self):
-        return self.latex_repr_generic(self.puzzle)
+        return self.latex_repr_generic(self.puzzle, show_numbers=True)
 
     def latex_repr_solution(self):
-        return self.latex_repr_generic(self.solution)
+        return self.latex_repr_generic(self.solution, show_numbers=False)
 
     def pretty_repr_solution(self):
         if self.solution:
@@ -273,8 +277,20 @@ class RectangularPuzzle:
                     alt(I,output(puzzle(C,V),B)), not alt(I,conjunction(B)).
                 :- not puzzle(C,V),
                     alt(I,output(puzzle(C,V),B)), alt(I,conjunction(B)).
+
+                :- guessed_number(Name,Num),
+                    alt(I,output(guessed_number(Name,Num),B)),
+                    not alt(I,conjunction(B)).
+                :- not guessed_number(Name,Num),
+                    alt(I,output(guessed_number(Name,Num),B)),
+                    alt(I,conjunction(B)).
+
                 :- alt(I), alt(I,conjunction(B)) :
-                        output(solution(C,V),B), solution(C,V).
+                        alt(I,output(solution(C,V),B)), solution(C,V).
+
+                raar :- alt(I), alt(I,conjunction(B)) :
+                        alt(I,output(solution(C,V),B)), solution(C,V).
+                #show print(raar) : raar.
             """
 
         control = clingo.Control([
@@ -320,8 +336,6 @@ enc_library = {
         cell(c(R,C)), cell(c(R,C+1)), cell(c(R,C+2)).
     three_in_a_row(c(R,C),c(R+1,C),c(R+2,C)) :-
         cell(c(R,C)), cell(c(R+1,C)), cell(c(R+2,C)).
-    :- three_in_a_row(C1,C2,C3),
-        solution(C1,V), solution(C2,V), solution(C3,V).
     """,
     #
     'adjacent_cells':
