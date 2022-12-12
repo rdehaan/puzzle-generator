@@ -47,7 +47,7 @@ class RectangularPuzzle:
             1 { solution(C,V) : value(V) } 1 :- cell(C).
             solution(C,V) :- puzzle(C,V).
         """
-        self.designated_solution_constraints = None
+        self.essential_solution_constraints = None
 
         self.naming = {}
         self.latex_naming = {}
@@ -174,41 +174,43 @@ class RectangularPuzzle:
         verbose=False,
         num_models=1,
         precompute_solution=False,
+        enforce_essential_constraints=True,
     ):
         """
         TODO
         """
 
-        designated_solution_program = ""
+        essential_solution_program = ""
         reified_solution_programs = []
-        if self.designated_solution_constraints:
-            designated_solution_program = "".join(
-                self.designated_solution_constraints
+        if self.essential_solution_constraints:
+            essential_solution_program = "".join(
+                self.essential_solution_constraints
             )
 
-            for i, solution_constraints in enumerate(list(map(list,
-                combinations(
-                    self.designated_solution_constraints,
-                    r=len(self.designated_solution_constraints)-1)
-                )
-            )):
-                program_to_reify = self.domain_program
-                program_to_reify += self.puzzle_gen_program
-                program_to_reify += self.solution_program
-                program_to_reify += "".join(solution_constraints)
+            if enforce_essential_constraints:
+                for i, solution_constraints in enumerate(list(map(list,
+                    combinations(
+                        self.essential_solution_constraints,
+                        r=len(self.essential_solution_constraints)-1)
+                    )
+                )):
+                    program_to_reify = self.domain_program
+                    program_to_reify += self.puzzle_gen_program
+                    program_to_reify += self.solution_program
+                    program_to_reify += "".join(solution_constraints)
 
-                reified_symbols = reify_program(
-                    program_to_reify,
-                    calculate_sccs=True,
-                )
-                reified_program = "".join([
-                    f"alt({i},{symbol}).\n"
-                    for symbol in reified_symbols
-                ])
-                reified_solution_programs.append(reified_program)
+                    reified_symbols = reify_program(
+                        program_to_reify,
+                        calculate_sccs=True,
+                    )
+                    reified_program = "".join([
+                        f"alt({i},{symbol}).\n"
+                        for symbol in reified_symbols
+                    ])
+                    reified_solution_programs.append(reified_program)
 
         if reified_solution_programs:
-            designated_solution_program += "".join(
+            essential_solution_program += "".join(
                 reified_solution_programs
             )
 
@@ -221,7 +223,7 @@ class RectangularPuzzle:
             ])
             program = self.domain_program
             program += self.solution_program
-            program += designated_solution_program
+            program += essential_solution_program
             control.add("base", [], program)
             control.ground([("base", [])])
 
@@ -241,13 +243,13 @@ class RectangularPuzzle:
         program_to_reify = self.domain_program
         program_to_reify += self.puzzle_gen_program
         program_to_reify += self.solution_program
-        program_to_reify += designated_solution_program
+        program_to_reify += essential_solution_program
 
         program = self.domain_program
         program += self.puzzle_gen_program
         program += self.puzzle_constraints_program
         program += self.solution_program
-        program += designated_solution_program
+        program += essential_solution_program
 
         if precompute_solution:
             program += "\n".join([
