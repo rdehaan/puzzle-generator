@@ -384,6 +384,38 @@ enc_library = {
         |R1-R2| = 1, |C1-C2| = 2.
     """,
     #
+    'pacman_knights_move':
+    """
+    pknight_dist(1..2).
+    pknight_vertical_dist(R1,R2,N) :-
+        cell(c(R1,_)), cell(c(R2,_)),
+        |R1-R2| = N.
+    pknight_vertical_dist(R1,R2,N) :-
+        pknight_vertical_dist(R2,R1,N).
+    pknight_vertical_dist(R1,R2,N) :-
+        cell(c(R1,_)), cell(c(R2,_)),
+        pknight_dist(N),
+        R1+N > board_height,
+        (R1+N) \\ board_height = R2.
+    pknight_horizontal_dist(C1,C2,N) :-
+        cell(c(_,C1)), cell(c(_,C2)),
+        |C1-C2| = N.
+    pknight_horizontal_dist(C1,C2,N) :-
+        pknight_horizontal_dist(C2,C1,N).
+    pknight_horizontal_dist(C1,C2,N) :-
+        cell(c(_,C1)), cell(c(_,C2)),
+        pknight_dist(N),
+        C1+N > board_width,
+        (C1+N) \\ board_width = C2.
+    pacman_knights_move(c(R1,C1),c(R2,C2)) :-
+        cell(c(R1,C1)), cell(c(R2,C2)),
+        pknight_vertical_dist(R1,R2,2),
+        pknight_horizontal_dist(C1,C2,1).
+    pacman_knights_move(c(R1,C1),c(R2,C2)) :-
+        cell(c(R1,C1)), cell(c(R2,C2)),
+        pknight_vertical_dist(R1,R2,1),
+        pknight_horizontal_dist(C1,C2,2).
+    """,#
     'bishops_move':
     """
     bishops_move(c(R1,C1),c(R2,C2)) :-
