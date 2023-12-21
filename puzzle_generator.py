@@ -188,6 +188,7 @@ class RectangularPuzzle:
         precompute_solution=False,
         use_cegar=False,
         enforce_essential_constraints=True,
+        quality_check_criteria=None,
     ):
         """
         TODO
@@ -247,6 +248,7 @@ class RectangularPuzzle:
             program += essential_solution_program
             control.add("base", [], program)
             control.ground([("base", [])])
+
 
             control.configuration.solve.models = 1
 
@@ -318,6 +320,19 @@ class RectangularPuzzle:
             '--parallel-mode=1',
             '--heuristic=Domain',
         ])
+
+        if quality_check_criteria:
+            if verbose:
+                print("Adding quality check propagator..")
+            control.register_propagator(
+                QualityCheckPropagator(
+                    self.domain_program + \
+                    self.solution_program + \
+                    "".join(self.essential_solution_constraints),
+                    quality_check_criteria,
+                )
+            )
+
         control.load("metaD.lp")
         if reified_solution_programs:
             control.load("meta-alt.lp")
@@ -327,6 +342,7 @@ class RectangularPuzzle:
         control.ground([("base", [])])
         if verbose:
             print("Done grounding..")
+
 
         # Find and yield answer sets
         control.configuration.solve.models = num_models
@@ -606,6 +622,109 @@ class CheckPropagator(Propagator):
                 conflict.append(-lit if assignment.is_true(lit) else lit)
 
             control.add_clause(conflict)
+
+
+class QualityChecker:
+    """
+    TODO
+    """
+    def __init__(self, base_program, quality_check_criteria):
+        self._ctl = Control()
+        self._map = dict()
+        self._base_program = base_program
+        self._quality_check_criteria = quality_check_criteria
+        if isinstance(quality_check_criteria, str):
+            if quality_check_criteria == "lookahead nontrivial":
+                self._clingo_args = ["--lookahead=atom"]
+                self._choices_threshold = 1
+                self._conflicts_threshold = 5
+            else:
+                raise ValueError('unknown value for quality_check_criteria')
+        elif isinstance(quality_check_criteria, list):
+            if isinstance(quality_check_criteria[0], str):
+                self._clingo_args = [quality_check_criteria[0]]
+            else:
+                self._clingo_args = quality_check_criteria[0]
+            self._choices_threshold = quality_check_criteria[1]
+            self._conflicts_threshold = quality_check_criteria[2]
+
+    def backend(self) -> Backend:
+        return self._ctl.backend()
+
+    def check(self, control: PropagateControl) -> bool:
+        assignment = control.assignment
+        puzzle_program = "".join([
+            f"{self._map[lit]}.\n"
+            for lit in self._map
+            if assignment.is_true(lit)
+        ])
+        clause = [
+            -1*lit
+            for lit in self._map
+            if assignment.is_true(lit)
+        ]
+        ctl_args = [
+            '--project',
+            '--warn=none',
+            '--parallel-mode=1',
+        ]
+        ctl_args += self._clingo_args
+        new_ctl = clingo.Control(ctl_args)
+        new_ctl.add("base", [], self._base_program + puzzle_program)
+        new_ctl.ground([("base", [])])
+        new_ctl.configuration.solve.models = 1
+        new_ctl.solve()
+        solver_stats = new_ctl.statistics['solving']['solvers']
+        if solver_stats['choices'] < self._choices_threshold or \
+            solver_stats['conflicts'] < self._conflicts_threshold:
+            print('~', end='')
+            return clause
+        else:
+            return None
+
+
+class QualityCheckPropagator(Propagator):
+    """
+    TODO
+    """
+    _checkers: List[QualityChecker]
+
+    def __init__(self, base_program, quality_check_criteria):
+        self._checkers = []
+        self._base_program = base_program
+        self._quality_check_criteria = quality_check_criteria
+
+    def init(self, init: PropagateInit):
+        """
+        Initialize the solvers for the check programs.
+        """
+        # we need a checker for each thread (to be able to solve in parallel)
+        for _ in range(init.number_of_threads):
+            checker = QualityChecker(
+                self._base_program,
+                self._quality_check_criteria,
+            )
+            self._checkers.append(checker)
+
+            with checker.backend() as backend:
+                for atom in init.symbolic_atoms:
+
+                    if (atom.symbol.name not in ["puzzle", "guessed_number"]):
+                        continue
+
+                    checker._map[init.solver_literal(atom.literal)] = \
+                        str(atom.symbol)
+
+    def check(self, control: PropagateControl):
+        """
+        Check total assignments.
+        """
+        assignment = control.assignment
+        checker = self._checkers[control.thread_id]
+
+        clause = checker.check(control)
+        if clause:
+            control.add_clause(clause)
 
 
 enc_library = {
