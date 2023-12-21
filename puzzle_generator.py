@@ -198,7 +198,9 @@ class RectangularPuzzle:
             self.generate_with_cegar(
                 verbose=verbose,
                 num_models=num_models,
-                enforce_essential_constraints=enforce_essential_constraints
+                precompute_solution=precompute_solution,
+                enforce_essential_constraints=enforce_essential_constraints,
+                quality_check_criteria=quality_check_criteria,
             )
             return
 
@@ -236,33 +238,6 @@ class RectangularPuzzle:
                 reified_solution_programs
             )
 
-        if precompute_solution:
-            control = clingo.Control([
-                '--project',
-                '--warn=none',
-                '--parallel-mode=1',
-                '--heuristic=Domain',
-            ])
-            program = self.domain_program
-            program += self.solution_program
-            program += essential_solution_program
-            control.add("base", [], program)
-            control.ground([("base", [])])
-
-
-            control.configuration.solve.models = 1
-
-            if self.solving_timeout:
-                with control.solve(
-                    async_=True,
-                    on_model=lambda model: self.interpret_model(model, verbose),
-                ) as handle:
-                    finished = handle.wait(self.solving_timeout)
-                    if verbose and not finished:
-                        print("\nStopped after solving timeout..")
-                    else:
-                        print()
-
         program_to_reify = self.domain_program
         program_to_reify += self.puzzle_gen_program
         program_to_reify += self.solution_program
@@ -275,6 +250,31 @@ class RectangularPuzzle:
         program += essential_solution_program
 
         if precompute_solution:
+            precomp_control = clingo.Control([
+                '--project',
+                '--warn=none',
+                '--parallel-mode=1',
+                '--heuristic=Domain',
+            ])
+            precomp_program = self.domain_program
+            precomp_program += self.solution_program
+            precomp_program += essential_solution_program
+            precomp_control.add("base", [], precomp_program)
+            precomp_control.ground([("base", [])])
+
+            precomp_control.configuration.solve.models = 1
+
+            if self.solving_timeout:
+                with precomp_control.solve(
+                    async_=True,
+                    on_model=lambda model: self.interpret_model(model, False),
+                ) as handle:
+                    finished = handle.wait(self.solving_timeout)
+                    if verbose and not finished:
+                        print("\nStopped after solving timeout..")
+                    else:
+                        print()
+
             program += "\n".join([
                 f":- not solution(c({row},{col}),{self.solution[(row, col)]})."
                 for row, col in self.solution
@@ -367,7 +367,9 @@ class RectangularPuzzle:
         self,
         verbose=False,
         num_models=1,
+        precompute_solution=False,
         enforce_essential_constraints=True,
+        quality_check_criteria=None,
     ):
         """
         TODO
@@ -376,13 +378,6 @@ class RectangularPuzzle:
         # TODO: implement precompute_solution
         # TODO: figure out if specific glue option performs better
         #   (i.e., only glue is solution/2 and puzzle/2)
-
-        control = clingo.Control([
-            '--project',
-            '--warn=none',
-            '--parallel-mode=1',
-            '--heuristic=Domain',
-        ])
 
         essential_solution_program = ""
         reified_solution_programs = []
@@ -443,6 +438,56 @@ class RectangularPuzzle:
         program += self.solution_program
         program += essential_solution_program
         program += glue_program
+
+        if precompute_solution:
+            precomp_control = clingo.Control([
+                '--project',
+                '--warn=none',
+                '--parallel-mode=1',
+                '--heuristic=Domain',
+            ])
+            precomp_program = self.domain_program
+            precomp_program += self.solution_program
+            precomp_program += essential_solution_program
+            control.add("base", [], precomp_program)
+            control.ground([("base", [])])
+
+            precomp_control.configuration.solve.models = 1
+
+            if self.solving_timeout:
+                with precomp_control.solve(
+                    async_=True,
+                    on_model=lambda model: self.interpret_model(model, False),
+                ) as handle:
+                    finished = handle.wait(self.solving_timeout)
+                    if verbose and not finished:
+                        print("\nStopped after solving timeout..")
+                    else:
+                        print()
+
+            program += "\n".join([
+                f":- not solution(c({row},{col}),{self.solution[(row, col)]})."
+                for row, col in self.solution
+            ])
+
+        control = clingo.Control([
+            '--project',
+            '--warn=none',
+            '--parallel-mode=1',
+            '--heuristic=Domain',
+        ])
+
+        if quality_check_criteria:
+            if verbose:
+                print("Adding quality check propagator..")
+            control.register_propagator(
+                QualityCheckPropagator(
+                    self.domain_program + \
+                    self.solution_program + \
+                    "".join(self.essential_solution_constraints),
+                    quality_check_criteria,
+                )
+            )
 
         if reified_solution_programs:
             control.load("meta-alt.lp")
